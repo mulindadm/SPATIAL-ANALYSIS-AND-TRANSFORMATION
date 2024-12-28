@@ -1,0 +1,130 @@
+echo "# SPATIAL-ANALYSIS-AND-TRANSFORMATION" >> README.md
+git init
+git add README.md
+git commit -m "first commit"
+git branch -M main
+git remote add origin https://github.com/mulindadm/SPATIAL-ANALYSIS-AND-TRANSFORMATION.git
+git push -u origin main
+import zipfile
+import requests
+import os
+
+# URLs to download data from
+urls = [
+    "https://jonnyphillips.github.io/Intro_Spatial/Day_2/Data/municipalities.zip",
+    "https://jonnyphillips.github.io/Intro_Spatial/Day_2/Data/BC250_Terra_Indigena_A.zip",
+    "https://jonnyphillips.github.io/Intro_Spatial/Day_2/Data/MCMV_new.zip"
+]
+
+# Directory to save the downloaded files and extract them
+data_dir = '/mnt/data'
+os.makedirs(data_dir, exist_ok=True)
+
+# Function to download and extract zip files
+def download_and_extract(url, dest_dir):
+    local_filename = os.path.join(dest_dir, url.split("/")[-1])
+    # Download the file
+    with requests.get(url, stream=True) as r:
+        with open(local_filename, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192): 
+                f.write(chunk)
+    # Extract the zip file
+    with zipfile.ZipFile(local_filename, 'r') as zip_ref:
+        zip_ref.extractall(dest_dir)
+
+# Download and extract each file
+for url in urls:
+    download_and_extract(url, data_dir)p
+import geopandas as gpd
+import matplotlib.pyplot as plt
+
+# Load the municipalities shapefile
+municipalities = gpd.read_file('/mnt/data/municipalities/municipalities.shp')
+
+# Filter municipalities within São Paulo state (assuming code 35 for São Paulo)
+sao_paulo_municipalities = municipalities[municipalities['CD_GEOCUF'] == '35']
+
+# Calculate centroids
+sao_paulo_municipalities['centroid'] = sao_paulo_municipalities.geometry.centroid
+
+# Get the outer boundary of São Paulo state
+sao_paulo_boundary = sao_paulo_municipalities.unary_union
+
+# Plotting
+fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+sao_paulo_municipalities.boundary.plot(ax=ax, linewidth=1, edgecolor='black')
+gpd.GeoSeries(sao_paulo_boundary).boundary.plot(ax=ax, linewidth=2, edgecolor='red')
+sao_paulo_municipalities['centroid'].plot(ax=ax, color='blue', markersize=5)
+plt.title('Centroids of Municipalities in São Paulo and State Boundary')
+plt.show()
+# Load the municipalities shapefile
+municipalities = gpd.read_file('/mnt/data/municipalities/municipalities.shp')
+
+# Group by state and calculate mean HDI (assuming 'HDI' is the column for Human Development Index)
+mean_hdi_by_state = municipalities.groupby('CD_GEOCUF')['HDI'].mean()
+
+mean_hdi_by_state
+# Load the municipalities and indigenous territories shapefiles
+municipalities = gpd.read_file('/mnt/data/municipalities/municipalities.shp')
+indigenous_territories = gpd.read_file('/mnt/data/BC250_Terra_Indigena_A/BC250_Terra_Indigena_A.shp')
+
+# Filter Gaucha do Norte municipality
+gaucha_do_norte = municipalities[municipalities['NM_MUN'] == 'Gaucha do Norte']
+
+# Filter Parque do Xingu indigenous territory
+parque_do_xingu = indigenous_territories[indigenous_territories['NM_TERRA'] == 'Parque do Xingu']
+
+# Intersect the two geometries
+intersection = gpd.overlay(gaucha_do_norte, parque_do_xingu, how='intersection')
+
+# Save the result as a new shapefile
+intersection.to_file('/mnt/data/Gaucha_do_Norte_Parque_do_Xingu.shp')
+# Load the housing projects shapefile
+housing_projects = gpd.read_file('/mnt/data/MCMV_new/MCMV_new.shp')
+
+# Filter housing projects within Acre state (assuming code 12 for Acre)
+acre_housing_projects = housing_projects[housing_projects['state_code'] == '12']
+
+# Calculate the distance between each pair of projects and find the closest pair
+min_distance = float('inf')
+closest_pair = None
+
+for i, project1 in acre_housing_projects.iterrows():
+    for j, project2 in acre_housing_projects.iterrows():
+        if i >= j:
+            continue
+        distance = project1.geometry.distance(project2.geometry)
+        if distance < min_distance:
+            min_distance = distance
+            closest_pair = (project1, project2)
+
+# Create a 10km buffer around each project
+acre_housing_projects['buffer'] = acre_housing_projects.geometry.buffer(10000)
+
+# Plotting
+fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+acre_housing_projects.plot(ax=ax, color='blue', markersize=5)
+acre_housing_projects['buffer'].plot(ax=ax, color='red', alpha=0.5)
+plt.title('10km Buffer Around Housing Projects in Acre')
+plt.show()
+# Load the housing projects shapefile
+housing_projects = gpd.read_file('/mnt/data/MCMV_new/MCMV_new.shp')
+
+# Group by municipality and count the number of housing units (assuming 'housing_units' is the column for units)
+housing_units_by_municipality = housing_projects.groupby('municipality_code')['housing_units'].sum()
+
+# Identify municipalities with the lowest and highest number of housing units
+lowest_housing_units_municipality = housing_units_by_municipality.idxmin()
+highest_housing_units_municipality = housing_units_by_municipality.idxmax()
+
+# Load the municipalities shapefile
+municipalities = gpd.read_file('/mnt/data/municipalities/municipalities.shp')
+
+# Merge housing units data with municipalities
+municipalities = municipalities.merge(housing_units_by_municipality, left_on='CD_GEOCMU', right_index=True)
+
+# Plotting
+fig, ax = plt.subplots(1, 1, figsize=(15, 15))
+municipalities.plot(column='housing_units', ax=ax, legend=True, cmap='viridis', legend_kwds={'label': "Total Housing Units"})
+plt.title('Distribution of Total Housing Units by Municipality')
+plt.show()
